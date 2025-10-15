@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overtime Tracker (£) - Deployable</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load React, ReactDOM, and Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Load Firebase libraries -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, onSnapshot, addDoc, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase services globally for use in the Babel script block
+        window.FirebaseServices = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, query, where, onSnapshot, addDoc, doc, getDoc, setDoc, serverTimestamp };
+        
+        // Setup global configuration and auth token (as they would be in the environment)
+        window.__firebase_config = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        window.__app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        window.__initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Import necessary components from Lucide (using inline SVGs in the future for compatibility)
+        const { Calendar, PoundSterling, Clock, FileText, Loader, Zap, ChevronLeft, ChevronRight, User, Plus, Edit } = {
+            Calendar: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+            PoundSterling: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="M18 7c0-5.5-4.5-9.5-10-9.5S-2 1.5-2 7H18"/><path d="M10 22c-5.5 0-10-4.5-10-10h10V22"/><path d="M10 22v-4"/><path d="M4 14h12"/><path d="M18 7h-8"/><line x1="18" y1="22" x2="18" y2="18"/></svg>,
+            Clock: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            FileText: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>,
+            Loader: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="M12 2v4"/><path d="m16.2 7.8 2.8-2.8"/><path d="M18 12h4"/><path d="m16.2 16.2 2.8 2.8"/><path d="M12 18v4"/><path d="m7.8 16.2-2.8 2.8"/><path d="M6 12H2"/><path d="m7.8 7.8-2.8-2.8"/></svg>,
+            Zap: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            ChevronLeft: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="m15 18-6-6 6-6"/></svg>,
+            ChevronRight: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="m9 18 6-6-6-6"/></svg>,
+            User: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            Plus: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+            Edit: ({ className, ...props }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+        };
+
+        const { useState, useEffect, useMemo } = React;
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, query, where, onSnapshot, addDoc, doc, getDoc, setDoc, serverTimestamp } = window.FirebaseServices;
+
+        // --- FIREBASE CONFIGURATION & INITIALIZATION ---
+        // Access global variables set in the module script block
+        const firebaseConfig = JSON.parse(window.__firebase_config);
+        const appId = window.__app_id;
+
+        const app = initializeApp(firebaseConfig);
+        const dbInstance = getFirestore(app);
+        const authInstance = getAuth(app);
+
+        // Helper to construct the Firestore paths
+        const getCollectionPath = (uid) => `/artifacts/${appId}/users/${uid}/overtime_entries`;
+        const getRateTiersDocPath = (uid) => `artifacts/${appId}/users/${uid}/user_settings/rate_tiers_doc`;
+
+        // Helper to format currency (GBP - £)
+        const formatCurrency = (value) => {
+          return new Intl.NumberFormat('en-GB', {
+            style: 'currency',
+            currency: 'GBP',
+          }).format(value);
+        };
+
+        // Helper to format date (YYYY-MM-DD) to Month Year
+        const formatMonthYearDisplay = (monthYear) => {
+          if (!monthYear) return '';
+          const [year, month] = monthYear.split('-');
+          const date = new Date(year, month - 1, 1);
+          return date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        };
+
+        // Helper for exponential backoff during API calls
+        const withBackoff = async (fn, retries = 3) => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              return await fn();
+            } catch (error) {
+              if (i === retries - 1) throw error;
+              const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+        };
+
+        // --- RATE TIER SETUP COMPONENT ---
+        const RateTierSetup = ({ userId, setRateTiers, dbInstance, getRateTiersDocPath, formatCurrency, initialTiers }) => {
+          const [tiers, setTiers] = useState(initialTiers || []);
+          const [newTierName, setNewTierName] = useState('');
+          const [newTierRate, setNewTierRate] = useState('');
+          const [isSaving, setIsSaving] = useState(false);
+          const [setupError, setSetupError] = useState(null);
+
+          const handleAddTier = () => {
+            const name = newTierName.trim();
+            const rate = Number(newTierRate);
+
+            if (!name || rate <= 0 || isNaN(rate)) {
+              setSetupError("Please enter a valid Name and an hourly Rate greater than £0.00.");
+              return;
+            }
+            if (tiers.find(t => t.name.toLowerCase() === name.toLowerCase())) {
+                setSetupError(`A rate tier named "${name}" already exists.`);
+                return;
+            }
+
+            setSetupError(null);
+            // Use a simple timestamp for the ID when creating new tiers locally
+            setTiers([...tiers, { id: Date.now(), name, rate }]);
+            setNewTierName('');
+            setNewTierRate('');
+          };
+
+          const handleRemoveTier = (id) => {
+            setTiers(tiers.filter(tier => tier.id !== id));
+          };
+
+          const handleSaveTiers = async () => {
+            if (tiers.length === 0) {
+              setSetupError("You must define at least one rate tier to proceed.");
+              return;
+            }
+
+            setIsSaving(true);
+            setSetupError(null);
+            try {
+              const tiersRef = doc(dbInstance, getRateTiersDocPath(userId));
+              // Save the tiers array to Firestore
+              await withBackoff(() => setDoc(tiersRef, { tiers }));
+              setRateTiers(tiers); // Update state in App component to transition to main UI
+            } catch (err) {
+              console.error("Error saving rate tiers:", err);
+              setSetupError("Failed to save your rate tiers. Please try again.");
+            } finally {
+              setIsSaving(false);
+            }
+          };
+
+          return (
+            <div className="flex items-center justify-center min-h-screen p-4 bg-gray-50">
+              <div className="w-full max-w-lg card bg-white p-8 rounded-xl shadow-2xl border-t-4 border-indigo-600">
+                <h2 className="text-2xl font-bold mb-4 text-gray-700 flex items-center">
+                    <Edit className="w-6 h-6 mr-2 text-indigo-500" /> Overtime Rate Tier Setup
+                </h2>
+                <p className="text-gray-500 mb-6">
+                  Define the different hourly pay rates for your overtime.
+                </p>
+
+                {setupError && (
+                  <div className="p-3 mb-4 text-sm font-medium text-red-800 bg-red-100 rounded-lg" role="alert">
+                    {setupError}
+                  </div>
+                )}
+
+                {/* New Tier Input */}
+                <div className="grid grid-cols-5 gap-3 mb-6 p-4 border border-indigo-200 bg-indigo-50 rounded-lg">
+                    <div className="col-span-3">
+                        <label htmlFor="newTierName" className="block text-xs font-medium text-gray-600 mb-1">Rate Name (e.g., Weekend)</label>
+                        <input
+                            id="newTierName"
+                            type="text"
+                            placeholder="Time and a Half"
+                            value={newTierName}
+                            onChange={(e) => setNewTierName(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                    </div>
+                    <div className="col-span-2">
+                        <label htmlFor="newTierRate" className="block text-xs font-medium text-gray-600 mb-1">Hourly Rate (£/hr)</label>
+                        <div className="relative flex">
+                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">£</span>
+                            <input
+                                id="newTierRate"
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                placeholder="18.00"
+                                value={newTierRate}
+                                onChange={(e) => setNewTierRate(e.target.value)}
+                                className="w-full p-2 pl-6 border border-gray-300 rounded-l-lg focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                            <button
+                                onClick={handleAddTier}
+                                className="p-2 bg-indigo-600 text-white rounded-r-lg hover:bg-indigo-700 disabled:bg-indigo-400 flex items-center justify-center transition-colors"
+                                type="button"
+                            >
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Current Tiers List */}
+                {tiers.length > 0 && (
+                  <div className="mb-6">
+                    <h3 className="text-md font-semibold mb-2 text-gray-700">Defined Rates ({tiers.length})</h3>
+                    <ul className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                      {tiers.map((tier) => (
+                        <li key={tier.id} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                          <span className="font-medium text-gray-800">{tier.name}</span>
+                          <div className="flex items-center">
+                            <span className="text-indigo-600 font-bold mr-4">{formatCurrency(tier.rate)}/hr</span>
+                            <button
+                              onClick={() => handleRemoveTier(tier.id)}
+                              className="text-red-500 hover:text-red-700 text-sm font-semibold"
+                              type="button"
+                            >
+                              &times; Remove
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveTiers}
+                  disabled={isSaving || tiers.length === 0}
+                  className="w-full mt-4 flex items-center justify-center p-3 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all
+                             bg-green-600 hover:bg-green-700 disabled:bg-green-400"
+                >
+                  {isSaving ? (
+                    <Loader className="animate-spin mr-2 w-5 h-5" />
+                  ) : (
+                    <Zap className="mr-2 w-5 h-5" />
+                  )}
+                  {isSaving ? 'Saving Configuration...' : 'Save Tiers and Start Tracking'}
+                </button>
+              </div>
+            </div>
+          );
+        };
+
+
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+          const [userId, setUserId] = useState(null);
+          const [isAuthReady, setIsAuthReady] = useState(false);
+          const [entries, setEntries] = useState([]);
+          const [isLoading, setIsLoading] = useState(true);
+          const [isSaving, setIsSaving] = useState(false);
+
+          // New States for Rate Tier management
+          const [rateTiers, setRateTiers] = useState(null);
+          const [isTiersLoading, setIsTiersLoading] = useState(true);
+
+          // State for the currently viewed month (YYYY-MM format)
+          const [selectedMonthYear, setSelectedMonthYear] = useState(new Date().toISOString().substring(0, 7));
+
+          // Form State
+          const today = new Date().toISOString().substring(0, 10);
+          const [date, setDate] = useState(today);
+          const [hours, setHours] = useState('');
+          const [selectedTierId, setSelectedTierId] = useState('');
+          const [note, setNote] = useState('');
+          const [error, setError] = useState(null);
+
+          // --- 1. AUTHENTICATION & INITIALIZATION ---
+          useEffect(() => {
+            const unsubscribeAuth = onAuthStateChanged(authInstance, async (user) => {
+              if (user) {
+                setUserId(user.uid);
+              } else {
+                try {
+                  if (typeof window.__initial_auth_token !== 'undefined') {
+                    await withBackoff(() => signInWithCustomToken(authInstance, window.__initial_auth_token));
+                  } else {
+                    await withBackoff(() => signInAnonymously(authInstance));
+                  }
+                  setUserId(authInstance.currentUser.uid);
+                } catch (err) {
+                  console.error("Authentication failed:", err);
+                  setError("Failed to authenticate. Check console for details.");
+                }
+              }
+              setIsAuthReady(true);
+              setIsLoading(false);
+            });
+
+            return () => unsubscribeAuth();
+          }, []);
+
+          // --- 2. RATE TIERS FETCHING ---
+          useEffect(() => {
+            if (!isAuthReady || !userId) return;
+
+            const tiersRef = doc(dbInstance, getRateTiersDocPath(userId));
+
+            const fetchRateTiers = async () => {
+              try {
+                const docSnap = await withBackoff(() => getDoc(tiersRef));
+                if (docSnap.exists() && docSnap.data().tiers) {
+                  const fetchedTiers = docSnap.data().tiers.map(tier => ({
+                    ...tier,
+                    rate: Number(tier.rate) // Ensure rate is a number
+                  }));
+                  setRateTiers(fetchedTiers);
+                  if (fetchedTiers.length > 0) {
+                      // Ensure selectedTierId is set to an existing ID or the first one
+                      setSelectedTierId(prevId => {
+                          const exists = fetchedTiers.some(tier => tier.id === prevId);
+                          return exists ? prevId : fetchedTiers[0].id;
+                      });
+                  }
+                } else {
+                  setRateTiers([]); // Empty array indicates setup is required
+                }
+              } catch (err) {
+                console.error("Error fetching rate tiers:", err);
+                setError("Failed to fetch rate settings.");
+                setRateTiers([]); // Force setup screen on error
+              } finally {
+                setIsTiersLoading(false);
+              }
+            };
+            fetchRateTiers();
+          }, [userId, isAuthReady]);
+
+          // --- 3. DATA FETCHING (REALTIME LISTENER) ---
+          useEffect(() => {
+            if (!isAuthReady || !userId || rateTiers === null || rateTiers.length === 0) return;
+
+            const entriesRef = collection(dbInstance, getCollectionPath(userId));
+            const q = query(entriesRef, where('monthYear', '==', selectedMonthYear));
+
+            const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+              const fetchedEntries = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                hours: Number(doc.data().hours) || 0,
+                tierRate: Number(doc.data().tierRate) || 0,
+                value: Number(doc.data().value) || 0,
+              })).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+              setEntries(fetchedEntries);
+              setIsLoading(false);
+            }, (err) => {
+              console.error("Firestore snapshot error:", err);
+              setError("Failed to fetch data. Check console for details.");
+              setIsLoading(false);
+            });
+
+            return () => unsubscribeSnapshot();
+          }, [userId, isAuthReady, selectedMonthYear, rateTiers]);
+
+          // --- 4. LOGIC & CALCULATIONS ---
+          const monthlyTotal = useMemo(() => {
+            return entries.reduce((sum, entry) => sum + entry.value, 0);
+          }, [entries]);
+
+          const navigateMonth = (direction) => {
+            const [year, month] = selectedMonthYear.split('-').map(Number);
+            let newDate = new Date(year, month - 1 + direction, 1);
+            setSelectedMonthYear(newDate.toISOString().substring(0, 7));
+          };
+
+          const selectedTier = useMemo(() => {
+            // Ensure rateTiers is an array before calling find
+            return Array.isArray(rateTiers) ? rateTiers.find(tier => tier.id == selectedTierId) : null;
+          }, [rateTiers, selectedTierId]);
+
+          // --- 5. FORM SUBMISSION ---
+          const handleSubmit = async (e) => {
+            e.preventDefault();
+            if (!userId || isSaving || !selectedTier) {
+                setError("Please select a valid Rate Tier.");
+                return;
+            }
+
+            const parsedHours = Number(hours);
+
+            if (parsedHours <= 0) {
+              setError("Hours Worked must be greater than zero.");
+              return;
+            }
+
+            setIsSaving(true);
+            setError(null);
+
+            // Calculation: Hours * Tier Rate (£/hr)
+            const tierRate = Number(selectedTier.rate);
+            const calculatedValue = parsedHours * tierRate;
+            const entryMonthYear = date.substring(0, 7); // YYYY-MM
+
+            const newEntry = {
+              date: date,
+              hours: parsedHours,
+              tierId: selectedTier.id,
+              tierName: selectedTier.name,
+              tierRate: tierRate,
+              note: note.trim(),
+              value: calculatedValue,
+              monthYear: entryMonthYear,
+              createdAt: serverTimestamp(),
+            };
+
+            try {
+              await withBackoff(() => addDoc(collection(dbInstance, getCollectionPath(userId)), newEntry));
+
+              setHours('');
+              setNote('');
+
+              if (entryMonthYear !== selectedMonthYear) {
+                setSelectedMonthYear(entryMonthYear);
+              }
+            } catch (err) {
+              console.error("Error adding document:", err);
+              setError("Failed to save entry. Please try again.");
+            } finally {
+              setIsSaving(false);
+            }
+          };
+
+          // --- 6. RENDER LOGIC ---
+          if (isLoading || !isAuthReady || isTiersLoading) {
+            return (
+              <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+                <div className="flex flex-col items-center p-6 bg-white rounded-xl shadow-lg">
+                  <Loader className="animate-spin text-indigo-500 mb-3" size={32} />
+                  <p className="text-gray-600">Loading application...</p>
+                </div>
+              </div>
+            );
+          }
+
+          if (rateTiers && rateTiers.length === 0) {
+            return <RateTierSetup userId={userId} setRateTiers={setRateTiers} dbInstance={dbInstance} getRateTiersDocPath={getRateTiersDocPath} formatCurrency={formatCurrency} initialTiers={[]} />;
+          }
+
+          return (
+            <div className="min-h-screen bg-gray-50 font-sans p-4 sm:p-6 md:p-8">
+              <div className="max-w-4xl mx-auto">
+                <header className="text-center py-6">
+                  <h1 className="text-3xl font-bold text-indigo-800 flex items-center justify-center">
+                    <Zap className="mr-3 h-7 w-7 text-yellow-500" /> Overtime Tracker (£)
+                  </h1>
+                  <p className="text-sm text-gray-500 mt-1 flex items-center justify-center">
+                    <User className="w-4 h-4 mr-1"/> User ID: {userId}
+                  </p>
+                </header>
+
+                {/* Entry Form */}
+                <div className="card bg-white p-6 rounded-xl shadow-lg mb-8">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-700 flex justify-between items-center">
+                    <span>Add New Overtime Entry</span>
+                    <button
+                        onClick={() => setRateTiers([])}
+                        className="text-sm font-medium text-indigo-500 hover:text-indigo-700 flex items-center p-1 rounded transition-colors"
+                        aria-label="Edit Rate Tiers"
+                    >
+                        <Edit className="w-4 h-4 mr-1" /> Edit Rates
+                    </button>
+                  </h2>
+
+                  {error && (
+                    <div className="p-3 mb-4 text-sm font-medium text-red-800 bg-red-100 rounded-lg" role="alert">
+                      {error}
+                    </div>
+                  )}
+                  <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    {/* Date */}
+                    <div className="col-span-4 sm:col-span-1">
+                      <label htmlFor="date" className="flex items-center text-sm font-medium text-gray-600 mb-1">
+                        <Calendar className="w-4 h-4 mr-1 text-indigo-500" /> Date
+                      </label>
+                      <input
+                        id="date"
+                        type="date"
+                        required
+                        max={today}
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Hours */}
+                    <div className="col-span-4 sm:col-span-1">
+                      <label htmlFor="hours" className="flex items-center text-sm font-medium text-gray-600 mb-1">
+                        <Clock className="w-4 h-4 mr-1 text-indigo-500" /> Hours Worked
+                      </label>
+                      <input
+                        id="hours"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        placeholder="e.g., 3.5"
+                        value={hours}
+                        onChange={(e) => setHours(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Rate Tier Dropdown */}
+                    <div className="col-span-4 sm:col-span-2">
+                      <label htmlFor="rateTier" className="flex items-center text-sm font-medium text-gray-600 mb-1">
+                        <PoundSterling className="w-4 h-4 mr-1 text-indigo-500" /> Rate Tier
+                      </label>
+                      <select
+                        id="rateTier"
+                        required
+                        value={selectedTierId}
+                        onChange={(e) => setSelectedTierId(Number(e.target.value))}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      >
+                        {rateTiers?.map(tier => (
+                          <option key={tier.id} value={tier.id}>
+                            {tier.name} ({formatCurrency(tier.rate)}/hr)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Note */}
+                    <div className="col-span-4">
+                      <label htmlFor="note" className="flex items-center text-sm font-medium text-gray-600 mb-1">
+                        <FileText className="w-4 h-4 mr-1 text-indigo-500" /> Note (e.g., Project X completion)
+                      </label>
+                      <input
+                        id="note"
+                        type="text"
+                        placeholder="A brief description"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    {/* Submission Button */}
+                    <div className="col-span-4 mt-2">
+                      <button
+                        type="submit"
+                        disabled={isSaving || !selectedTier}
+                        className="w-full flex items-center justify-center p-3 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all
+                                   bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+                      >
+                        {isSaving ? (
+                          <Loader className="animate-spin mr-2 w-5 h-5" />
+                        ) : (
+                          <Zap className="mr-2 w-5 h-5" />
+                        )}
+                        {isSaving ? 'Saving...' : 'Log Overtime Entry'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Monthly Summary & Navigation */}
+                <div className="card bg-indigo-50 p-6 rounded-xl shadow-inner mb-8 border-l-4 border-indigo-600">
+                  <div className="flex justify-between items-center mb-4">
+                    <button
+                      onClick={() => navigateMonth(-1)}
+                      className="p-2 rounded-full bg-indigo-200 text-indigo-700 hover:bg-indigo-300 transition-colors"
+                      aria-label="Previous Month"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+
+                    <h2 className="text-2xl font-bold text-indigo-800">
+                      {formatMonthYearDisplay(selectedMonthYear)} Summary
+                    </h2>
+
+                    <button
+                      onClick={() => navigateMonth(1)}
+                      className="p-2 rounded-full bg-indigo-200 text-indigo-700 hover:bg-indigo-300 transition-colors"
+                      aria-label="Next Month"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-indigo-600">Total Calculated Overtime Value</p>
+                    <p className="text-4xl font-extrabold text-indigo-900 mt-1">
+                      {formatCurrency(monthlyTotal)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Entry History List */}
+                <div className="card bg-white p-6 rounded-xl shadow-lg">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-700">
+                    Entry History
+                    <span className="text-sm font-normal text-gray-500 ml-2">({entries.length} entries)</span>
+                  </h2>
+
+                  <div className="space-y-3">
+                    {entries.length === 0 ? (
+                      <p className="text-center py-6 text-gray-500 italic">No entries logged for {formatMonthYearDisplay(selectedMonthYear)}.</p>
+                    ) : (
+                      entries.map((entry) => (
+                        <div key={entry.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg flex justify-between items-center hover:bg-gray-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-indigo-700">{entry.date}</p>
+                            <p className="text-sm text-gray-600 truncate">{entry.note || 'No note provided'}</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {entry.hours}h at **{entry.tierName}** ({formatCurrency(entry.tierRate)}/hr)
+                            </p>
+                          </div>
+                          <div className="text-right ml-4">
+                            <p className="text-lg font-bold text-green-700">
+                              {formatCurrency(entry.value)}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Explanation of "Reset" */}
+                <div className="mt-8 text-center text-sm text-gray-500 p-4">
+                    <p>
+                        The tracker "resets" by simply changing the view to the current calendar month.
+                        Use the **&larr;** and **&rarr;** arrows to view past or future months' totals.
+                        The data is safely stored in Firestore for permanent tracking.
+                    </p>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        // Render the App component once the window loads
+        window.onload = function() {
+            const container = document.getElementById('root');
+            const root = ReactDOM.createRoot(container);
+            root.render(<App />);
+        };
+    </script>
+</body>
+</html>
